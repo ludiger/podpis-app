@@ -216,6 +216,7 @@ async function submitSignature(){
 
 function downloadSigned(){
   window.open(`/api/doc/${token}/download`, "_blank");
+  setTimeout(()=>{ location.href = "/"; }, 800);
 }
 
 init();
