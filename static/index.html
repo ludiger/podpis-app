@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Podpis dokumentov</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{background:#f5f5f7;color:#1d1d1f;min-height:100vh}
+.header{background:#1d2433;color:white;padding:16px 24px;font-weight:700;font-size:18px}
+.container{max-width:760px;margin:24px auto;padding:0 16px}
+.card{background:white;border-radius:14px;padding:24px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card h2{font-size:16px;margin-bottom:12px}
+.upload-zone{border:2px dashed #ccc;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:.2s}
+.upload-zone:hover{border-color:#378ADD;background:#f0f7ff}
+.upload-zone.drag{border-color:#378ADD;background:#f0f7ff}
+.upload-zone p{color:#888;font-size:14px;margin-top:8px}
+.upload-zone .icon{font-size:40px}
+input[type=file]{display:none}
+.btn{padding:11px 20px;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;transition:.15s}
+.btn-primary{background:#378ADD;color:white}
+.btn-primary:hover{background:#2d72b8}
+.btn-green{background:#1D9E75;color:white}
+.btn-gray{background:#f0f0f0;color:#333}
+.btn-danger{background:#fee2e2;color:#991b1b}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.doc-item{border:1px solid #e0e0e0;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.doc-item.signed{background:#f0fdf8}
+.doc-info{flex:1;min-width:0}
+.doc-name{font-weight:600;font-size:14px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-meta{font-size:11px;color:#aaa}
+.badge{padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;flex-shrink:0}
+.badge-signed{background:#d1fae5;color:#065f46}
+.badge-pending{background:#fef3c7;color:#92400e}
+.doc-actions{display:flex;gap:6px;flex-wrap:wrap}
+.empty{text-align:center;color:#aaa;padding:30px;font-size:14px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000;flex-direction:column;gap:12px}
+.overlay.show{display:flex}
+.spinner{width:36px;height:36px;border:4px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay p{color:white;font-size:14px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:white;padding:10px 20px;border-radius:8px;font-size:13px;z-index:2000;opacity:0;transition:.3s}
+.toast.show{opacity:1}
+.toast.error{background:#dc2626}
+.preview-wrap{margin-top:14px;border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;position:relative}
+.preview-wrap img{width:100%;display:block}
+.sig-box{position:absolute;border:2px solid #378ADD;background:rgba(55,138,221,.15);cursor:move;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#378ADD;font-weight:700}
+.link-row{display:flex;gap:8px;margin-top:10px}
+.link-row input{flex:1;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fafafa}
+</style>
+</head>
+<body>
+<div class="header">✍️ Podpis dokumentov</div>
+<div class="container">
+
+  <div class="card">
+    <h2>Nahrať dokument</h2>
+    <label for="file-input" class="upload-zone" id="upload-zone">
+      <div class="icon">📄</div>
+      <p><strong>Klikni alebo presuň PDF sem</strong><br>Automaticky nájdeme miesto na podpis</p>
+    </label>
+    <input type="file" id="file-input" accept="application/pdf" onchange="handleFile(this.files[0])">
+  </div>
+
+  <div class="card" id="preview-card" style="display:none">
+    <h2 id="preview-title">Náhľad a miesto podpisu</h2>
+    <p style="font-size:12px;color:#888;margin-bottom:8px">Modrý rámček ukazuje miesto, kam sa vloží podpis. Môžeš ho potiahnuť alebo zmeniť veľkosť.</p>
+    <div class="preview-wrap" id="preview-wrap">
+      <img id="preview-img" src="">
+      <div class="sig-box" id="sig-box" style="resize:both;overflow:auto">PODPIS</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="confirmPosition()">✓ Potvrdiť pozíciu a vytvoriť odkaz</button>
+      <button class="btn btn-green" onclick="signNow()">✍️ Podpísať teraz</button>
+    </div>
+    <div id="link-result" style="display:none">
+      <div class="link-row">
+        <input type="text" id="sign-link" readonly>
+        <button class="btn btn-gray" onclick="copyLink()">🔗 Kopírovať</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📁 Dokumenty</h2>
+    <div id="docs-list"><div class="empty">Načítavam...</div></div>
+  </div>
+
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <p id="overlay-text">Spracúvam...</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let currentToken = null;
+let currentSigPos = null;
+let currentPageInfo = null;
+
+function ov(show, text){
+  document.getElementById("overlay").classList.toggle("show", show);
+  if(text) document.getElementById("overlay-text").textContent = text;
+}
+function toast(msg, isError){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (isError?" error":"");
+  setTimeout(()=>t.classList.remove("show"), 3000);
+}
+
+// Drag & drop
+const zone = document.getElementById("upload-zone");
+zone.addEventListener("dragover", e=>{e.preventDefault();zone.classList.add("drag")});
+zone.addEventListener("dragleave", ()=>zone.classList.remove("drag"));
+zone.addEventListener("drop", e=>{
+  e.preventDefault();
+  zone.classList.remove("drag");
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+
+async function handleFile(file){
+  if(!file || file.type !== "application/pdf"){
+    toast("Vyber PDF súbor", true);
+    return;
+  }
+  ov(true, "Analyzujem dokument a hľadám miesto na podpis...");
+  const fd = new FormData();
+  fd.append("file", file);
+  try{
+    const r = await fetch("/api/upload",{method:"POST",body:fd});
+    if(!r.ok) throw new Error("Upload failed");
+    const res = await r.json();
+    currentToken = res.token;
+    currentSigPos = res.sig_position;
+    currentPageInfo = res;
+    ov(false);
+    await showPreview();
+    toast("Dokument nahraný! Skontroluj miesto podpisu.");
+    // Persist PDF to Gist in background
+    fetch(`/api/doc/${currentToken}/persist`, {method:"POST"});
+    loadDocs(true);
+  }catch(e){
+    ov(false);
+    toast("Chyba nahrávania: "+e.message, true);
+  }
+}
+
+async function showPreview(){
+  document.getElementById("preview-card").style.display = "block";
+  document.getElementById("link-result").style.display = "none";
+  document.getElementById("preview-title").textContent = "Náhľad - strana " + (currentSigPos.page+1) + " z " + currentPageInfo.page_count;
+
+  const img = document.getElementById("preview-img");
+  img.src = `/api/doc/${currentToken}/page/${currentSigPos.page}`;
+  await new Promise(res=>{ img.onload = res; });
+
+  const wrap = document.getElementById("preview-wrap");
+  const scale = wrap.offsetWidth / currentSigPos.page_width;
+
+  const box = document.getElementById("sig-box");
+  box.style.left = (currentSigPos.x * scale) + "px";
+  box.style.top = (currentSigPos.y * scale) + "px";
+  box.style.width = (currentSigPos.width * scale) + "px";
+  box.style.height = (currentSigPos.height * scale) + "px";
+
+  // Enable dragging
+  makeDraggable(box, wrap, scale);
+
+  document.getElementById("preview-card").scrollIntoView({behavior:"smooth"});
+}
+
+function makeDraggable(box, wrap, scale){
+  let dragging = false, startX, startY, origX, origY;
+  box.onmousedown = (e)=>{
+    if(e.target !== box) return; // allow resize handle
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    origX = box.offsetLeft; origY = box.offsetTop;
+    e.preventDefault();
+  };
+  document.onmousemove = (e)=>{
+    if(!dragging) return;
+    let newX = origX + (e.clientX - startX);
+    let newY = origY + (e.clientY - startY);
+    newX = Math.max(0, Math.min(newX, wrap.offsetWidth - box.offsetWidth));
+    newY = Math.max(0, Math.min(newY, wrap.offsetHeight - box.offsetHeight));
+    box.style.left = newX + "px";
+    box.style.top = newY + "px";
+  };
+  document.onmouseup = ()=>{
+    if(dragging){
+      dragging = false;
+      updateSigPosFromBox(box, wrap, scale);
+    }
+  };
+  // Also update on resize
+  const observer = new ResizeObserver(()=>updateSigPosFromBox(box, wrap, scale));
+  observer.observe(box);
+}
+
+function updateSigPosFromBox(box, wrap, scale){
+  currentSigPos.x = box.offsetLeft / scale;
+  currentSigPos.y = box.offsetTop / scale;
+  currentSigPos.width = box.offsetWidth / scale;
+  currentSigPos.height = box.offsetHeight / scale;
+}
+
+async function savePosition(){
+  await fetch(`/api/doc/${currentToken}/position`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({sig_position: currentSigPos})
+  });
+}
+
+async function confirmPosition(){
+  ov(true, "Ukladám...");
+  await savePosition();
+  ov(false);
+  const link = `${location.origin}/sign/${currentToken}`;
+  document.getElementById("sign-link").value = link;
+  document.getElementById("link-result").style.display = "block";
+  toast("Odkaz vytvorený!");
+}
+
+function copyLink(){
+  const input = document.getElementById("sign-link");
+  navigator.clipboard.writeText(input.value)
+    .then(()=>toast("Link skopírovaný!"))
+    .catch(()=>{ input.select(); document.execCommand("copy"); toast("Link skopírovaný!"); });
+}
+
+async function signNow(){
+  await savePosition();
+  location.href = `/sign/${currentToken}`;
+}
+
+// ── DOCUMENTS LIST ─────────────────────────────────────────────────────────
+let _cachedDocs = [];
+let _lastLoad = 0;
+
+async function loadDocs(force=false){
+  if(!force && _cachedDocs.length && (Date.now()-_lastLoad < 8000)){
+    renderDocs(_cachedDocs);
+    return;
+  }
+  try{
+    const r = await fetch("/api/documents");
+    const docs = await r.json();
+    _cachedDocs = docs;
+    _lastLoad = Date.now();
+    renderDocs(docs);
+  }catch(e){
+    document.getElementById("docs-list").innerHTML = '<div class="empty">Chyba načítania</div>';
+  }
+}
+
+function renderDocs(docs){
+  const el = document.getElementById("docs-list");
+  if(!docs.length){
+    el.innerHTML = '<div class="empty">Žiadne dokumenty</div>';
+    return;
+  }
+  el.innerHTML = docs.map(d=>`
+    <div class="doc-item ${d.signed?'signed':''}">
+      <div class="doc-info">
+        <div class="doc-name">${d.filename}</div>
+        <div class="doc-meta">${d.created}</div>
+      </div>
+      <span class="badge ${d.signed?'badge-signed':'badge-pending'}">${d.signed?'✅ Podpísané':'⏳ Čaká na podpis'}</span>
+      <div class="doc-actions">
+        ${d.signed?`<button class="btn btn-green" onclick="window.open('/api/doc/${d.token}/download','_blank')">⬇️ Stiahnuť</button>`:
+          `<button class="btn btn-primary" onclick="location.href='/sign/${d.token}'">✍️ Podpísať</button>`}
+        <button class="btn btn-gray" onclick="copyDocLink('${d.token}')">🔗</button>
+        <button class="btn btn-danger" onclick="deleteDoc('${d.token}')">🗑</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function copyDocLink(token){
+  const link = `${location.origin}/sign/${token}`;
+  navigator.clipboard.writeText(link).then(()=>toast("Link skopírovaný!"));
+}
+
+async function deleteDoc(token){
+  if(!confirm("Zmazať tento dokument?")) return;
+  try{
+    const r = await fetch(`/api/doc/${token}`,{method:"DELETE"});
+    if(r.ok){
+      toast("Dokument zmazaný");
+      _cachedDocs = _cachedDocs.filter(d=>d.token!==token);
+      renderDocs(_cachedDocs);
+    }
+  }catch(e){toast("Chyba mazania", true)}
+}
+
+loadDocs();
+</script>
+</body>
+</html>
